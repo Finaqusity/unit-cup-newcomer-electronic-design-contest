@@ -1,0 +1,27 @@
+# Keil MDK 构建产物
+Objects/
+Listings/
+DebugConfig/
+*.axf
+*.elf
+*.map
+*.htm
+*.lst
+*.lnp
+*.o
+*.d
+*.crf
+*.dr
+*.td
+*.hex
+*.bin
+*.dep
+
+# Keil 用户界面状态（含本机用户名/窗口布局，不宜入库）
+*.uvguix.*
+*.uvgui.*
+
+# 其它
+*.bak
+*.orig
+Thumbs.db

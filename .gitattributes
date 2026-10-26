@@ -1,0 +1,20 @@
+# 统一行尾处理：仓库内存 LF，检出时由 git 按本机设置转换
+* text=auto
+
+# 二进制文件禁止任何行尾/编码转换
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.pdf  binary
+*.zip  binary
+*.png  binary
+*.jpg  binary
+*.axf  binary
+
+# 源码按文本处理（UTF-8 中文注释）
+*.c    text
+*.h    text
+*.py   text
+*.md   text
+*.uvprojx text
+*.uvoptx  text
