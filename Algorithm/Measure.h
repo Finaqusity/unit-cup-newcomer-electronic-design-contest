@@ -58,6 +58,11 @@ Signal_t Measure_AC(const uint16_t *buf, uint16_t n, float fs);
 Signal_t Measure_Wave(const uint16_t *buf, uint16_t n, float fs);
 void    Measure_Deimpulse(uint16_t *buf, uint16_t n);  /* 就地抑制孤立尖峰：与 5 点中位数之差大于 0.25×稳健跨度的样本
                                                           被中位数替换，保留真实峰值与真实边沿；供采集取帧后的预处理 */
+void    Measure_RobustSpan(const uint16_t *buf, uint16_t n, uint16_t *hi, uint16_t *lo);
+                                                        /* 输出削去孤立尖峰后的上、下平顶电平(AD 码)。
+                                                           用统计量而非原始 max/min：边沿过冲与打轨的
+                                                           单点毛刺会把 max/min 差值放大到接近满量程，
+                                                           使触发门限落到波形范围之外而无法过零。 */
 /* Wave 模式：波形点由应用层(User/main.c)把 buf 直接交给 OLED_DrawWave 绘制，此处仅给出 Vpp/freq 等指标 */
 
 /* 谐波重构去噪：对 n=128 的折叠单周期(AD 码)做 FFT，按噪声底门限滤除宽带噪声后逆变换，
@@ -66,8 +71,9 @@ void    Measure_Deimpulse(uint16_t *buf, uint16_t n);  /* 就地抑制孤立尖�
 void Measure_ReconHarm(const uint16_t *in, uint16_t n, uint16_t *out);
 
 /* 一维全变差(TV/ROF)去噪(Chambolle 对偶投影迭代)：在压制噪声的同时保留边界(方波台阶、
-   三角波尖角不失真)，波形模式的 Vpp 默认先经此处理再取 max/min。lam 为去噪强度，
-   量级约为噪声标准差的 2 倍。 */
+   三角波尖角不失真)。当前采集流程并未使用它：波形模式的 Vpp 直接取折叠后的真实
+   max/min，孤立尖峰由 Measure_Deimpulse 在时域剔除；此函数保留供离线对比实验。
+   lam 为去噪强度，量级约为噪声标准差的 2 倍。 */
 void Measure_TVDenoise(const uint16_t *in, uint16_t n, float lam, uint16_t *out);
 
 #endif

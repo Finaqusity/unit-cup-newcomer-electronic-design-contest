@@ -2,10 +2,10 @@
 #include "OLED_Font.h"
 #include "OLED_Font_CN.h"
 
-/*==================== 屏幕接口选择 ====================*/
-/* OLED_USE_ONBOARD = 0：外接显示屏模块，SCL=PB10、SDA=PB11
-   OLED_USE_ONBOARD = 1：板载显示屏，SCL=PB8、SDA=PB9
-   更换显示硬件后修改该宏并重新编译。 */
+/*==================== 端口配置（软件 I2C 引脚选择） ====================*/
+/* OLED_USE_ONBOARD 决定 SCL/SDA 使用哪一组引脚：
+   0 = 外接显示屏模块（SCL=PB10，SDA=PB11）；1 = 板载显示屏模块（SCL=PB8，SDA=PB9）
+   只修改该宏并重新编译即可切换，两组引脚共用同一套初始化与读写代码。 */
 #define OLED_USE_ONBOARD   1
 
 #if OLED_USE_ONBOARD
@@ -19,13 +19,13 @@
 #define OLED_GPIO        GPIOB
 #define OLED_GPIO_RCC    RCC_APB2Periph_GPIOB
 
-/*引脚写*/
+/* 引脚电平写入宏 */
 #define OLED_W_SCL(x)    GPIO_WriteBit(OLED_GPIO, OLED_SCL_PIN, (BitAction)(x))
 #define OLED_W_SDA(x)    GPIO_WriteBit(OLED_GPIO, OLED_SDA_PIN, (BitAction)(x))
 
-/*==================== 帧缓冲 (128x64 = 1024字节, page-major) ====================*/
-/* OLED_FB[page][col], page=0~7, col=0~127; 每字节 = 该列8个竖直像素, bit0=最上行.
-   直接对应 SSD1306 显存布局, 刷屏时无需转换. */
+/*==================== 帧缓冲（128x64 = 1024 字节，page-major） ====================*/
+/* OLED_FB[page][col]，page=0~7，col=0~127；每字节对应一列的 8 个竖直像素，bit0 为最上一行。
+   该组织方式与 SSD1306 显存布局一致，刷屏时按页直接写入，无需二次转换。 */
 static uint8_t OLED_FB[8][128];
 
 /*==================== 软件 I2C ====================*/
@@ -107,7 +107,7 @@ void OLED_WriteData(uint8_t Data)
 }
 
 /**
-  * @brief  OLED连续写数据 (一次事务连写多字节, 刷屏提速关键)
+  * @brief  OLED 连续写数据（单个 I2C 事务内连写多字节，减少起始与停止条件的开销，用于提高刷屏速率）
   */
 void OLED_WriteDataBurst(const uint8_t *Data, uint16_t Length)
 {
@@ -138,6 +138,8 @@ void OLED_SetCursor(uint8_t Y, uint8_t X)
 /**
   * @brief  清空帧缓冲 (仅清内存, 需再调 OLED_Flush 才生效)
   */
+uint8_t *OLED_FB_Get(void) { return &OLED_FB[0][0]; }   /* 帧缓冲首地址；便于在 PC 端编译时读取整屏内容以验证布局，设备端显示流程不使用该接口 */
+
 void OLED_Clear(void)
 {
 	uint8_t p; uint16_t x;
@@ -147,7 +149,7 @@ void OLED_Clear(void)
 }
 
 /**
-  * @brief  把帧缓冲一次性刷到屏幕
+  * @brief  将帧缓冲一次性写入显示屏
   */
 void OLED_Flush(void)
 {
@@ -160,7 +162,7 @@ void OLED_Flush(void)
 }
 
 /**
-  * @brief  画一个像素 (写入帧缓冲)
+  * @brief  绘制单个像素（写入帧缓冲）
   * @param  X 0~127, Y 0~63, Color 1亮/0灭
   */
 void OLED_SetPixel(uint8_t X, uint8_t Y, uint8_t Color)
@@ -171,7 +173,7 @@ void OLED_SetPixel(uint8_t X, uint8_t Y, uint8_t Color)
 }
 
 /**
-  * @brief  读一个像素
+  * @brief  读取单个像素
   */
 uint8_t OLED_GetPixel(uint8_t X, uint8_t Y)
 {
@@ -180,7 +182,7 @@ uint8_t OLED_GetPixel(uint8_t X, uint8_t Y)
 }
 
 /**
-  * @brief  画直线 (Bresenham)
+  * @brief  绘制直线（Bresenham 算法）
   */
 void OLED_DrawLine(int16_t X0, int16_t Y0, int16_t X1, int16_t Y1, uint8_t Color)
 {
@@ -200,7 +202,7 @@ void OLED_DrawLine(int16_t X0, int16_t Y0, int16_t X1, int16_t Y1, uint8_t Color
 }
 
 /**
-  * @brief  画空心矩形
+  * @brief  绘制空心矩形
   */
 void OLED_DrawFrame(uint8_t X, uint8_t Y, uint8_t W, uint8_t H, uint8_t Color)
 {
@@ -212,7 +214,7 @@ void OLED_DrawFrame(uint8_t X, uint8_t Y, uint8_t W, uint8_t H, uint8_t Color)
 }
 
 /**
-  * @brief  画实心矩形
+  * @brief  绘制实心矩形
   */
 void OLED_FillRect(uint8_t X, uint8_t Y, uint8_t W, uint8_t H, uint8_t Color)
 {
@@ -222,7 +224,7 @@ void OLED_FillRect(uint8_t X, uint8_t Y, uint8_t W, uint8_t H, uint8_t Color)
 			OLED_SetPixel(X + i, Y + j, Color);
 }
 
-/*==================== 文本 (写帧缓冲, page对齐, 不透明) ====================*/
+/*==================== 文本（写入帧缓冲，按 page 对齐，覆盖式绘制） ====================*/
 
 /**
   * @brief  显示一个字符 (8x16)
@@ -255,7 +257,7 @@ void OLED_ShowString(uint8_t Line, uint8_t Column, char *String)
 }
 
 /**
-  * @brief  次方函数
+  * @brief  幂运算（X 的 Y 次方）
   */
 uint32_t OLED_Pow(uint32_t X, uint32_t Y)
 {
@@ -317,9 +319,9 @@ void OLED_ShowBinNum(uint8_t Line, uint8_t Column, uint32_t Number, uint8_t Leng
 	}
 }
 
-/*==================== 汉字 / 混排 (逐像素, Y 任意) ====================*/
+/*==================== 汉字 / 混排（逐像素绘制，Y 可为任意行） ====================*/
 
-/* 把一个 8x16 ASCII 字模画到像素坐标 (X,Y) */
+/* 将一个 8x16 ASCII 字模绘制到像素坐标 (X,Y) */
 static void OLED_DrawAscii16(uint8_t X, uint8_t Y, char Char)
 {
 	uint8_t i, j, col;
@@ -335,7 +337,7 @@ static void OLED_DrawAscii16(uint8_t X, uint8_t Y, char Char)
 	}
 }
 
-/* 把一个 16x16 汉字字模画到像素坐标 (X,Y) */
+/* 将一个 16x16 汉字字模绘制到像素坐标 (X,Y) */
 static void OLED_DrawCN16(uint8_t X, uint8_t Y, const uint8_t *glyph)
 {
 	uint8_t i, j, col;
@@ -398,7 +400,7 @@ void OLED_ShowChinese(uint8_t X, uint8_t Y, const char *Str)
 					break;
 				}
 			}
-			if (!found) OLED_DrawFrame(X, Y, 16, 16, 1);  //字库里没有: 空框占位
+			if (!found) OLED_DrawFrame(X, Y, 16, 16, 1);  //字模表未收录该汉字：绘制 16x16 空心矩形占位，保持排版宽度不变
 			X += 16;
 		}
 	}
@@ -407,7 +409,7 @@ void OLED_ShowChinese(uint8_t X, uint8_t Y, const char *Str)
 /*==================== 波形 ====================*/
 
 /**
-  * @brief  画一段波形 (自动纵向缩放, 折线连接)
+  * @brief  绘制一段波形（自动纵向缩放，折线连接）
   * @param  buf n个采样值; n 点数
   * @param  x0,y0,w,h 显示区域 (像素)
   */
@@ -424,7 +426,7 @@ void OLED_DrawWave(const uint16_t *buf, uint16_t n, uint8_t x0, uint8_t y0, uint
 		if (buf[i] < vmin) vmin = buf[i];
 		if (buf[i] > vmax) vmax = buf[i];
 	}
-	if (vmax - vmin < 4) vmax = vmin + 4;         //防除零/平线
+	if (vmax - vmin < 4) vmax = vmin + 4;         //限制最小跨度：峰谷差小于 4 时按 4 处理，避免除零并保证迹线可见
 
 	for (i = 0; i < n; i++)
 	{
@@ -436,9 +438,9 @@ void OLED_DrawWave(const uint16_t *buf, uint16_t n, uint8_t x0, uint8_t y0, uint
 	}
 }
 
-/* 抽样包络绘制：每个显示列画一条 lo[i]~hi[i] 之间的竖线。
-   当信号周期仅占数个显示列时，逐点连线会漏抽峰谷点，表现为幅度偏小、方波边沿倾斜；
-   采用 min/max 包络可保证峰与谷都呈现在屏上：平顶为实心带，边沿为陡立的竖线。 */
+/* 抽样包络绘制（每周期像素数较少时的做法）：每个采样列画一条 lo[i]~hi[i] 之间的竖线。
+   逐点连线在每周期只有几个像素时会因抽稀遗漏峰谷，使显示幅度偏小、方波边沿出现倾斜；
+   采用 min/max 包络可保证峰值与谷值都被绘制：稳定段呈实心带，跳变沿呈陡竖线。 */
 void OLED_DrawWaveEnv(const uint16_t *lo, const uint16_t *hi, uint16_t n, uint8_t x0, uint8_t y0, uint8_t w, uint8_t h)
 {
 	uint16_t i;
@@ -452,7 +454,7 @@ void OLED_DrawWaveEnv(const uint16_t *lo, const uint16_t *hi, uint16_t n, uint8_
 		if (lo[i] < vmin) vmin = lo[i];
 		if (hi[i] > vmax) vmax = hi[i];
 	}
-	if (vmax - vmin < 4) vmax = vmin + 4;         //防除零/平线
+	if (vmax - vmin < 4) vmax = vmin + 4;         //限制最小跨度：峰谷差小于 4 时按 4 处理，避免除零并保证迹线可见
 
 	for (i = 0; i < n; i++)
 	{
@@ -461,6 +463,213 @@ void OLED_DrawWaveEnv(const uint16_t *lo, const uint16_t *hi, uint16_t n, uint8_
 		yb = y0 + h - 1 - (int16_t)((uint32_t)(lo[i] - vmin) * (h - 1) / (vmax - vmin));
 		if (ya == yb) OLED_SetPixel((uint8_t)px, (uint8_t)ya, 1);
 		else          OLED_DrawLine(px, ya, px, yb, 1);
+	}
+}
+
+/* 坐标系网格：外框由调用者绘制，本函数绘制内部分格（点线）与 0V 参考线（实线）。
+   nx/ny = 水平与垂直方向的格数；格线坐标按四舍五入取整，避免不能整除时偏差逐格累积。
+   y0v = 0V 所在行；该行超出绘制区时不画参考线，改在上边缘或下边缘画箭头指示 0V 方位。 */
+void OLED_DrawGrid(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h, uint8_t nx, uint8_t ny, int16_t y0v)
+{
+	uint8_t k, i, j;
+	int16_t xi, yi;
+	if (w < 2 || h < 2 || nx < 2 || ny < 2) return;
+
+	for (k = 1; k < nx; k++) {                       /* 竖直分格线：稀疏点线，每 4 像素一个点 */
+		xi = (int16_t)(x0 + (k * (w - 1) + (int16_t)(nx / 2)) / nx);
+		for (j = 0; j < h; j += 4) OLED_SetPixel((uint8_t)xi, (uint8_t)(y0 + j), 1);
+	}
+	for (k = 1; k < ny; k++) {                       /* 水平分格线：稀疏点线 */
+		yi = (int16_t)(y0 + (k * (h - 1) + (int16_t)(ny / 2)) / ny);
+		for (i = 0; i < w; i += 4) OLED_SetPixel((uint8_t)(x0 + i), (uint8_t)yi, 1);
+	}
+
+	if (y0v >= (int16_t)y0 && y0v <= (int16_t)(y0 + h - 1)) {
+		for (i = 0; i < w; i++) OLED_SetPixel((uint8_t)(x0 + i), (uint8_t)y0v, 1);   /* 0V 参考线（实线） */
+	} else if (y0v < (int16_t)y0) {                  /* 0V 参考行位于绘制区上方：绘制向上箭头 */
+		int16_t ay = (int16_t)(y0 + 1);
+		OLED_SetPixel((uint8_t)(x0 + 2), (uint8_t)ay, 1);
+		OLED_SetPixel((uint8_t)(x0 + 1), (uint8_t)(ay + 1), 1);
+		OLED_SetPixel((uint8_t)(x0 + 3), (uint8_t)(ay + 1), 1);
+		OLED_SetPixel((uint8_t)(x0 + 2), (uint8_t)(ay + 2), 1);
+		OLED_SetPixel((uint8_t)(x0 + 2), (uint8_t)(ay + 3), 1);
+	} else {                                         /* 0V 参考行位于绘制区下方：绘制向下箭头 */
+		int16_t ay = (int16_t)(y0 + h - 4);
+		OLED_SetPixel((uint8_t)(x0 + 2), (uint8_t)(ay + 3), 1);
+		OLED_SetPixel((uint8_t)(x0 + 1), (uint8_t)(ay + 2), 1);
+		OLED_SetPixel((uint8_t)(x0 + 3), (uint8_t)(ay + 2), 1);
+		OLED_SetPixel((uint8_t)(x0 + 2), (uint8_t)ay, 1);
+		OLED_SetPixel((uint8_t)(x0 + 2), (uint8_t)(ay - 1), 1);
+	}
+}
+
+/* 按调用者预先算好的像素行号绘制波形：每列在 yhi[i] 与 ylo[i] 之间画竖线（包络），单点列则与上一列连线（折线）。
+   电压到像素行的映射由调用者完成：标定链属于 Algorithm 模块，显示层不承担单位换算。 */
+void OLED_DrawWaveScaled(const uint8_t *ylo, const uint8_t *yhi, uint16_t n, uint8_t x0, uint8_t w)
+{
+	uint16_t i;
+	int16_t px, ya, yb, lpx = -1, lpy = 0;
+	if (n == 0 || w == 0) return;
+
+	for (i = 0; i < n; i++)
+	{
+		px = x0 + (int16_t)((uint32_t)i * (w - 1) / (n - 1 ? n - 1 : 1));
+		yb = yhi[i]; ya = ylo[i];                      /* yhi 对应屏幕上方（行号较小），ylo 对应下方 */
+		if (yb > ya) { int16_t t = yb; yb = ya; ya = t; }
+		if (yb == ya) {
+			if (lpx >= 0) OLED_DrawLine(lpx, lpy, px, (int16_t)ya, 1);
+			else          OLED_SetPixel((uint8_t)px, (uint8_t)ya, 1);
+			lpy = ya;
+		} else {
+			OLED_DrawLine(px, yb, px, ya, 1);
+			lpy = ya;
+		}
+		lpx = px;
+	}
+}
+
+/*==================== 5×7 半高字库（仅 Wave 页使用） ====================
+   8×16 字库每个字符行高 16 像素，两行即占用 32 像素（半屏高度）；波形页需要幅值、频率与两个坐标刻度共 4 项信息，
+   因此另设一套 5 宽 7 高的字模：两行小字只占 y=0..15，y=16..63 的 48 像素全部留给波形。
+   存储方式：每个字符 7 字节对应 7 行，每字节的 bit4..bit0 自左向右对应 5 列，按行式存放便于核对。
+   字库仅收录 Wave 页用到的字符；未收录字符按空格处理，只留白而不绘制错误字形。 */
+typedef struct { char ch; uint8_t rows[7]; } Font5x7;
+static const Font5x7 F5x7[] = {
+	{' ', {0x00,0x00,0x00,0x00,0x00,0x00,0x00}},
+	{'0', {0x0E,0x11,0x11,0x11,0x11,0x11,0x0E}},
+	{'1', {0x04,0x0C,0x14,0x04,0x04,0x04,0x0E}},   /* 字形说明：起笔短划位于左上，主竖居中（第 3 列），底部衬线跨第 2~4 列 */
+	{'2', {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}},
+	{'3', {0x1F,0x02,0x04,0x02,0x01,0x11,0x0E}},
+	{'4', {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}},
+	{'5', {0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E}},
+	{'6', {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E}},
+	{'7', {0x1F,0x01,0x02,0x04,0x08,0x08,0x08}},
+	{'8', {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}},
+	{'9', {0x0E,0x11,0x11,0x0F,0x01,0x02,0x1C}},
+	{'=', {0x00,0x00,0x1F,0x00,0x1F,0x00,0x00}},
+	{'.', {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C}},
+	{'/', {0x01,0x01,0x02,0x04,0x08,0x10,0x10}},
+	{':', {0x00,0x0C,0x0C,0x00,0x0C,0x0C,0x00}},
+	{'V', {0x11,0x11,0x11,0x11,0x11,0x0A,0x04}},
+	{'F', {0x1F,0x10,0x10,0x1E,0x10,0x10,0x10}},
+	{'H', {0x11,0x11,0x11,0x1F,0x11,0x11,0x11}},
+	{'T', {0x1F,0x04,0x04,0x04,0x04,0x04,0x04}},
+	{'M', {0x11,0x1B,0x15,0x11,0x11,0x11,0x11}},
+	{'z', {0x1F,0x01,0x02,0x04,0x08,0x10,0x1F}},
+	{'d', {0x01,0x01,0x01,0x0F,0x11,0x11,0x0F}},
+	{'m', {0x00,0x15,0x15,0x15,0x15,0x15,0x15}},
+	{'s', {0x0E,0x10,0x10,0x0E,0x01,0x01,0x0E}},
+	{'u', {0x11,0x11,0x11,0x11,0x11,0x0F,0x01}},
+	{'e', {0x00,0x0E,0x11,0x1F,0x11,0x0E,0x00}},
+	{'a', {0x00,0x0E,0x01,0x0F,0x11,0x11,0x0F}},
+	{'r', {0x00,0x1E,0x11,0x10,0x10,0x10,0x10}},
+	{'i', {0x0C,0x00,0x04,0x04,0x04,0x04,0x0E}},
+	{'n', {0x00,0x1E,0x11,0x11,0x11,0x11,0x11}},
+	{'g', {0x00,0x0F,0x11,0x11,0x0F,0x01,0x1E}},
+	{'l', {0x0E,0x04,0x04,0x04,0x04,0x04,0x0E}},
+	{'o', {0x00,0x0E,0x11,0x11,0x11,0x11,0x0E}},
+	{'p', {0x1E,0x11,0x11,0x1E,0x10,0x10,0x10}},
+	{'-', {0x00,0x00,0x00,0x1F,0x00,0x00,0x00}},
+	{'+', {0x00,0x04,0x04,0x1F,0x04,0x04,0x00}},
+	{'C', {0x0E,0x11,0x10,0x10,0x10,0x11,0x0E}},
+	{'L', {0x10,0x10,0x10,0x10,0x10,0x10,0x1F}},
+};
+#define F5x7_N ((uint8_t)(sizeof(F5x7)/sizeof(F5x7[0])))
+
+static const uint8_t *font5x7_of(char c)
+{
+	uint8_t i;
+	for (i = 0; i < F5x7_N; i++) if (F5x7[i].ch == c) return F5x7[i].rows;
+	return F5x7[0].rows;                       /* 未收录字符退回空格：保留占位宽度，不绘制不确定的字形 */
+}
+
+/* 在像素坐标 (x,y) 处画 5×7 文本，字宽 5 + 间隔 1 = 6px；返回下一个可写的 x。 */
+uint8_t OLED_Text5x7(uint8_t x, uint8_t y, char *s)
+{
+	uint8_t r, c;
+	while (*s) {
+		const uint8_t *g = font5x7_of(*s++);
+		for (r = 0; r < 7; r++)
+			for (c = 0; c < 5; c++)
+				if (g[r] & (1u << (4 - c))) OLED_SetPixel((uint8_t)(x + c), (uint8_t)(y + r), 1);
+		x = (uint8_t)(x + 6);
+	}
+	return x;
+}
+
+/* 5×7 数字：len=0 时按实际位数输出，否则右对齐补足到 len 位；返回文本结束后的下一个可写 x */
+uint8_t OLED_Num5x7(uint8_t x, uint8_t y, uint32_t v, uint8_t len)
+{
+	char buf[11];
+	uint8_t i = 0, n = 1, d = len;
+	uint32_t t = v;
+	while (t >= 10u) { t /= 10u; n++; }
+	if (d == 0 || d < n) d = n;
+	buf[d] = 0;
+	for (i = d; i > 0; i--) { buf[i - 1] = (char)('0' + (v % 10u)); v /= 10u; }
+	return OLED_Text5x7(x, y, buf);
+}
+
+/* 0V 参考行超出绘制区（直流偏置大到框内无法容纳）时，在没有迹线的一侧角落标注直流电平：
+   绘制前迹线已被整体平移到刚好不被裁剪，因此 0V 缺失的一侧必定没有波形像素，文本不会与迹线重叠。 */
+static void show_dc(uint8_t x, uint8_t y, int32_t dc_mv)
+{
+	uint32_t a = (uint32_t)((dc_mv < 0) ? -dc_mv : dc_mv);
+	x = OLED_Text5x7(x, y, "DC=");
+	x = OLED_Text5x7(x, y, (dc_mv < 0) ? "-" : "+");
+	x = OLED_Num5x7(x, y, a / 1000u, 1);
+	x = OLED_Text5x7(x, y, ".");
+	x = OLED_Num5x7(x, y, (a % 1000u) / 10u, 2);
+	OLED_Text5x7(x, y, "V");
+}
+
+/* Wave 页整页布局：两行 5×7 小字（y=0..15）与波形框、网格、迹线（y=16..63）。
+   布局放在显示层是为了只保留一份坐标定义：同一份代码既可编入固件，也便于在 PC 端编译并渲染整屏预览，避免预览与固件布局不一致。
+   数据侧（码值→电压→行号、V/div 档位）由 Capture_WaveRows 计算后传入，本函数只负责绘制。 */
+void OLED_WavePage(uint32_t vpp_mv, uint32_t freq_hz, int32_t dc_mv, uint8_t have_num, uint8_t have_wave,
+                   const uint8_t *ylo, const uint8_t *yhi, uint16_t n,
+                   uint16_t vdiv_mv, float tdiv_ms, int16_t y0v,
+                   uint8_t box_y, uint8_t box_h)
+{
+	uint8_t x;
+
+	if (have_num) {
+		x = OLED_Text5x7(0,  0, "Vpp=");
+		x = OLED_Num5x7(x,   0, vpp_mv, 4);
+		x = OLED_Text5x7(x,  0, "mV");
+		x = OLED_Text5x7(66, 0, "F=");
+		x = OLED_Num5x7(x,   0, freq_hz, 5);
+		OLED_Text5x7(x, 0, "Hz");
+	} else {
+		OLED_Text5x7(37, 0, "Measuring");            /* 幅值与频率尚未稳定：在该行居中显示提示文本，代替分隔符占位 */
+	}
+
+	if (have_wave) {
+		x = OLED_Text5x7(0, 8, "V/d=");
+		if (vdiv_mv >= 1000u) { x = OLED_Num5x7(x, 8, vdiv_mv / 1000u, 0); x = OLED_Text5x7(x, 8, "V"); }
+		else                  { x = OLED_Num5x7(x, 8, vdiv_mv, 0);        x = OLED_Text5x7(x, 8, "mV"); }
+		x = OLED_Text5x7(x, 8, "  T/d=");
+		if (tdiv_ms >= 1.0f) {
+			uint32_t v = (uint32_t)(tdiv_ms * 10.0f + 0.5f);              /* 换算为十分之一毫秒的整数并四舍五入，供后续拆分整数位与小数位 */
+			x = OLED_Num5x7(x, 8, v / 10u, 0);
+			if (v % 10u) { x = OLED_Text5x7(x, 8, "."); x = OLED_Num5x7(x, 8, v % 10u, 1); }
+			OLED_Text5x7(x, 8, "ms");
+		} else {
+			x = OLED_Num5x7(x, 8, (uint32_t)(tdiv_ms * 1000.0f + 0.5f), 0);
+			OLED_Text5x7(x, 8, "us");
+		}
+	}
+
+	OLED_DrawFrame(0, box_y, 128, box_h, 1);
+	if (have_wave) {
+		OLED_DrawGrid(0, box_y, 128, box_h, 8, 8, y0v);
+		OLED_DrawWaveScaled(ylo, yhi, n, 1, 126);
+		/* 0V 参考行超出绘制区时，该侧没有迹线像素，直流电平标注在此处 */
+		if (y0v < (int16_t)(box_y + 1))              show_dc(8, (uint8_t)(box_y + 1), dc_mv);
+		else if (y0v > (int16_t)(box_y + box_h - 2)) show_dc(8, (uint8_t)(box_y + box_h - 8), dc_mv);
+	} else {
+		OLED_DrawGrid(0, box_y, 128, box_h, 8, 8, y0v);      /* 无信号时仍绘制坐标系与 0V 参考线 */
+		OLED_Text5x7(37, (uint8_t)(box_y + 4), "no signal"); /* 文本置于绘制区上部，避免与 0V 参考线重叠 */
 	}
 }
 
@@ -516,6 +725,6 @@ void OLED_Init(void)
 
 	OLED_WriteCommand(0xAF);	//开启显示
 
-	OLED_Clear();				//清帧缓冲
-	OLED_Flush();				//上屏
+	OLED_Clear();				//清空帧缓冲
+	OLED_Flush();				//将帧缓冲写入显示屏
 }
